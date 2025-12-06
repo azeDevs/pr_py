@@ -92,7 +92,7 @@ def _cap(): print(_ln + ansi('reset'))
 def _br(cols: list): print(_ln + _rst + ansiHex(cols[0]) + "\n─────────────────────────────────────────────────────────────────\n" + _rst)
 
 def _pr(s: dict, cols: list, ic: str, width: int): 
-    pr_pre = STY(ic + _l, cols[0], 'bold')  +  STY(s['pre'].strip(), cols[1], width)
+    pr_pre = STY(ic + _l, cols[0], 'bold')  +  STY(s['pre'].strip(), cols[1], width) if s['pre'] else ''
     pr_mid = STY(_l +"➡" + _l, "WH") +STY(s['mid'].strip(), cols[2])
     pr_suf = _l + s['link']
     print(_ln + pr_pre + pr_mid + pr_suf)
@@ -101,7 +101,7 @@ def _pr(s: dict, cols: list, ic: str, width: int):
 def _print_LOGS(logs: list[dict], init_text: str, colors: list, ic: str):
     if not logs: return
     sW = 24
-    for l in logs: sW = _clen(l['pre']) if _clen(l['pre']) > sW else sW
+    for l in logs: sW = _clen(l['pre']) if l['pre'] and _clen(l['pre']) > sW else sW
     _init(init_text, colors) # print(_ln+"\n"+_ln + STY(_pre_ln+"━━  INFORMATION REPORTS  ━━" + _bld_ln, _c_i[0])+"\n"+_ln)
     for s in logs: _pr(s, colors, ic, sW) # _po(STY(f"✦"+_l, _c_i[0], 'bold'), s['pre'].strip(), _c_i[1], sW, s['mid'].strip(), _c_i[2], s['link'])
     _cap()
