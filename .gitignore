@@ -1,0 +1,21 @@
+# Python cache + compiled objects
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Development tooling
+.idea/
+.vscode/
+
+# Build + packaging output
+dist/
+build/
+*.egg-info/
+
+# Misc
+_scratch.txt
