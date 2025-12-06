@@ -9,7 +9,7 @@ description = "idk"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name="azeDevs" }]
-dependencies = []
+dependencies = [wcwidth]
 
 [project.urls]
 Homepage = "https://github.com/azedevs/pr_py"

@@ -1,64 +1,102 @@
+import json
 from typing import Optional
-from core.az_terminal import TERM_WIDTH, TERM_WIDTH, PR, PR_BR, PR_LN, PR_MID, PR_NEXT, STY, TERM_WIDTH_FULL, ansi, ansiHex, bgHex, getStrTable, vlen
-from utils.util_json import render_json
+from core.az_terminal import TERM_WIDTH, TERM_WIDTH, PR, PR_BR, PR_LN, PR_NEXT, STY, ansi, ansiHex, getStrTable
 from collections.abc import Mapping, Sequence
 __all__ = [name for name in dir() if not name.startswith("_")]
 
 
 
 
-"""
-  ✖  ✔  ⚠︎  ✦  𝒊  ☢  🛈  ★  ✎ 🗐 ☑ ➤ 🕊 ▶
-  「  」  ⌞  ⌝
-  ⚠️  ✔️  ☑️  ❌  ♻️
-  🕛🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚
-  ◝◟◞◜◝◟  ◡ ○  ◴◷◶◵ ◐◓◑◒ ◴◷◶◵  ○ ◡  ◞◜◝◟◞◜  ◠ ○  ◶◴◵◷ ◑◒◐◓ ◶◴◵◷  ○ ◠ 
-  
 
-▏                      ▕    24
+class _Inline:
+    __slots__ = ("value",)
+    def __init__(self, value): self.value = value
 
-▏__0.5 /__0.5KB▕
+def _collapse_for_render(obj, level=0, root_array_level=None, *, oneLineLenMax=128):
+    def json_one_line(x):
+        s = json.dumps(x, ensure_ascii=False, separators=(', ', ': '))
+        if isinstance(x, dict):  return "{ " + s[1:-1] + " }"
+        if isinstance(x, list):  return "[ " + s[1:-1] + " ]"
+        return s
+
+    if isinstance(obj, dict):
+        if (root_array_level is None or level != root_array_level + 1):
+            one_liner = json_one_line(obj)
+            if len(one_liner) <= oneLineLenMax: return _Inline(obj) # wrapper only for rendering
+        return {k: _collapse_for_render(v, level+1, root_array_level, oneLineLenMax=oneLineLenMax)
+                for k, v in obj.items()}
+
+    if isinstance(obj, list):
+        next_root = root_array_level if root_array_level is not None else (0 if level == 0 else None)
+        return [_collapse_for_render(v, level+1, next_root, oneLineLenMax=oneLineLenMax) for v in obj]
+
+    return obj
+
+def _render_json(objRaw, indent=2, level=0, *, oneLineLenMax=112, collapse=True):
+    # Build a temporary, collapsed view purely for rendering
+    obj = _collapse_for_render(objRaw, oneLineLenMax=oneLineLenMax) if collapse else objRaw
+
+    # Inline nodes: print their payload on one line w/o quotes
+    if isinstance(obj, _Inline):
+        val = obj.value
+        s = json.dumps(val, ensure_ascii=False, separators=(', ', ': '))
+        if isinstance(val, dict):  return "{ " + s[1:-1] + " }"
+        if isinstance(val, list):  return "[ " + s[1:-1] + " ]"
+        return s  # scalar
+
+    # Flat list of numbers
+    if isinstance(obj, list) and all(isinstance(n, (int, float)) for n in obj):
+        flat = json.dumps(obj, ensure_ascii=False, separators=(', ', ': '))
+        if len(flat) <= oneLineLenMax: return flat
+
+    # Nested list of number lists
+    if isinstance(obj, list) and all(isinstance(s, list) and all(isinstance(n, (int, float)) for n in s) for s in obj):
+        flat = json.dumps(obj, ensure_ascii=False, separators=(', ', ': '))
+        if len(flat) <= oneLineLenMax: return flat
+
+    if isinstance(obj, list):
+        lines = ["["]
+        for i, item in enumerate(obj):
+            s = _render_json(item, indent, level+1, oneLineLenMax=oneLineLenMax, collapse=False)
+            s_lines = s.splitlines()
+            if len(s_lines) == 1:
+                lines.append(" " * ((level+1) * indent) + s_lines[0] + ("," if i < len(obj) - 1 else ""))
+            else:
+                lines.append(" " * ((level+1) * indent) + s_lines[0])
+                for subline in s_lines[1:-1]:
+                    lines.append(subline)
+                lines.append(" " * ((-level) * indent) + s_lines[-1] + ("," if i < len(obj) - 1 else ""))
+                # lines.append(" " * ((level+1) * indent) + s_lines[-1] + ("," if i < len(obj) - 1 else ""))
+        lines.append(" " * (level * indent) + "]")
+        return "\n".join(lines)
+
+    if isinstance(obj, dict):
+        items = []
+        for k, v in obj.items():
+            items.append(json.dumps(k, ensure_ascii=False) + ": " +
+                         _render_json(v, indent, level+1, oneLineLenMax=oneLineLenMax, collapse=False))
+        if not items: return "{}"
+        sep = ",\n" + " " * ((level+1) * indent)
+        return "{\n" + " " * ((level+1)*indent) + sep.join(items) + "\n" + " " * (level*indent) + "}"
+
+    # scalars
+    return json.dumps(obj, ensure_ascii=False)
 
 
-▏              ▕
-
-▏99.9% ████████▕    16
-
-▏ ᴩʀᴏᴄ ᴄᴏᴍᴩʟᴇᴛᴇ ▕    16
-◢ ◣ ◤ ◥
-◐◑◒◓◕◴ ◵ ◶ ◷ ◧ ◩ ◳ ◲	◱	◰ 
-█
-▉
-▊
-▋
-▌
-▍
-▎
-▏
-
-
-"""
 
 
 
 
-# def PR_EXPORT_INIT(head: str, color: str, name: str, state: str = "pending"):
-#     PR(f"{state}...", pre=STY(head, f"{color}", 'bold') + f" {name}")
 
-# def PR_LN_FUNC(funcName: str, text = "", *, ic: str = "", depth = 0, ln = False):
-#     d = ((" "*depth) + "⮡  ") if depth else ""
-#     PR_MOVE(f"{STY(d, 'C')}{STY(funcName, '#219ffb')}", STY(str(text), '#00edff'), ic=ic, ln=ln)
+
 
 def PR_PROC_INIT(procName: str, text = "", *, ic: str = "📚", ln = False): 
     PR_EXPORT_INIT(f"{ic} {procName}", "#ffd599", "", STY(str(text), '#f4ff5c'))
-    # PR_MOVE(f"{STY(procName, '#ffd599')}", STY(str(text), '#f4ff5c'), ic=ic, ln=False)
     
 def PR_PROC_DONE(procName: str, data, *, text = "items", ic: str = "📚"): 
     head = f"{ic} {procName}"
     color = "#8be88b"
     PR_LN(getStr_COUNT(color, data) + STY(" ✔  ", color) + text, pre=STY(head, color, 'bold'))
-    # PR_EXPORT(f"{ic} {procName}", "#8be88b", "", STY(text, 'G'), data) #📔📚🗃️📦
-    # PR_MOVE(f"{STY(procName, '#8be88b')}", STY(str(text), '#f4ff5c'), ic=ic, ln=True)
 
 def PR_FUNC(funcName: str, text = "", *, ic: str = "", depth = 0, sup = False, ln = False):
     b = "━┯ " if sup else "━━ "
@@ -156,16 +194,16 @@ def PR_LN_NOTICE(text, notes = None, *, head: Optional[str] = "NOTICE"):
     if notes != None: print(f"\n{str(notes)}\n" + STY((" " * (len(hOut)-1)) + ("▚" * w), 'BG_R', 'bold', '#FFF') + "\n")
     # time.sleep(2)
 
-def PR_LN_WARN(text, *, head: Optional[str] = "WARN", defTo = None):
-    pre = STY(f"  ⚠︎  {str(head)}  ", 'BG_Y', 'bold', '#000') if head is not None else None
-    PR_BR(STY(str(text), 'YH'), pre=pre)
-    return defTo
+# def PR_LN_WARN(text, *, head: Optional[str] = "WARN", defTo = None):
+#     pre = STY(f"  ⚠︎  {str(head)}  ", 'BG_Y', 'bold', '#000') if head is not None else None
+#     PR_BR(STY(str(text), 'YH'), pre=pre)
+#     return defTo
 
-def PR_LN_ERROR(text, e = None, *, head: Optional[str] = "FAIL", defTo = None):
-    pre = STY(f"  ✖  {str(head)}  ", 'BG_R', 'bold') if head is not None else None
-    PR_BR(STY(f"{str(text)}", 'italic', 'R'), pre=pre)
-    if e != None: print(STY(str(e), 'RH'))
-    return defTo
+# def PR_LN_ERROR(text, e = None, *, head: Optional[str] = "FAIL", defTo = None):
+#     pre = STY(f"  ✖  {str(head)}  ", 'BG_R', 'bold') if head is not None else None
+#     PR_BR(STY(f"{str(text)}", 'italic', 'R'), pre=pre)
+#     if e != None: print(STY(str(e), 'RH'))
+#     return defTo
 
 def PR_DONE(text, head: Optional[str] = '✦ EXPORTED'):
     pre = STY(str(head), 'bold', 'C') if head is not None else None
@@ -244,7 +282,7 @@ def PR_DEBUG_OBJ(obj, text: str = "Object",
     PR_LN(f"{start}" + ansi('reset'), pre=False, suf=False)
     PR_LN(f"{mid}{sl2}", pre=False, suf=False)
     if preText: print(col[1] + preText + ansi('reset'))
-    print(col[0] + render_json(obj, oneLineLenMax=w) + ansi('reset'))
+    print(col[0] + _render_json(obj, oneLineLenMax=w) + ansi('reset'))
     if sufText: print(col[1] + sufText + ansi('reset'))
     PR_LN(f"{mid}{sl2}", pre=False, suf=False)
     PR_LN(f"{close}" + ansi('reset'), pre=False, suf=False)
@@ -267,41 +305,42 @@ def PR_DEBUG_TABLE(*text, sep="┃", align="<", head="", color="#88ffaa", colors
 
 
 
-def PRINT_DEPS(text: str):
-    line = STY(('━'*4), '#ff7733')
-    midh = f"{STY('COPYING ▶ ', 'bold', '#ffbb99')}"
-    midt = f"{STY(str(text), 'W')}"
+def PRINT_DEPS(text: str, *, pre: str = "", ic: str = "▶"):
+    mid_p = STY(f"{pre} ", 'bold', '#ffbb99') if pre else ""
+    mid_i = STY(f"{ic} ", 'bold', '#ffbb99') if ic else ""
+    mid_t = f"{STY(str(text), 'W')}"
+    line_s = STY(('━'*4), '#ff7733')
+    mid = f"{line_s}  {mid_p + mid_i + mid_t}"
+    line_e = STY(('━'*(TERM_WIDTH()-len(mid)-2)), '#ff7733')
     PR_LN(f"", pre=False, suf=False)
-    PR_LN(f"{line}  {midh + midt}  {line*128}", pre=False, suf=False)
+    PR_LN(f"{mid}  {line_e}", pre=False, suf=False)
     print("")
 
 
-def getPreColors(text: str) -> list:
+
+
+def _getPreColors(theme_id: int = 0) -> list:
     dk = 'ac'
-    colRaw = ['#b8b8ff', '#8585ff', f"8585ff{dk}"] # 240 
-    # colRaw = ['#f5baf5', '#cc49cc', f"ad85ff{dk}"] # 300 
-    colUnk = ['#f5bae1', '#f50aa6', f"f50aa6{dk}"] # 320 
+    colUnk  = ['#f5bae1', '#f50aa6', f"f50aa6{dk}"] # 320 
+    colRaw  = ['#b8b8ff', '#8585ff', f"8585ff{dk}"] # 240 
     colDeps = ['#ffbb99', '#ff7733', f"ff7733{dk}"] # 20
     colInit = ['#ffee99', '#ffdd33', f"ffdd33{dk}"] # 50
-    # colInit = ['#a6f57f', '#58f50a', f"58f50a{dk}"] # 100
     colProc = ['#7ff5ce', '#0af5a6', f"0af5a6{dk}"] # 160
     colType = ['#7fcef5', '#0aa6f5', f"0aa6f5{dk}"] # 200
     colTemp = ['#b8b8b8', '#8f8f8f', f"8f8f8f{dk}"] # 300 
     
     col = colUnk
-    if text.startswith('raw'): col = colRaw
-    if text.startswith('api'): col = colRaw
-    if text.startswith('dep'): col = colDeps
-    if text.startswith('init'): col = colInit
-    if text.startswith('proc'): col = colProc
-    if text.startswith('type'): col = colType
-    if text.startswith('temp'): col = colTemp
+    if theme_id == 1: col = colRaw
+    if theme_id == 2: col = colDeps
+    if theme_id == 3: col = colInit
+    if theme_id == 4: col = colProc
+    if theme_id == 5: col = colType
+    if theme_id == 6: col = colTemp
     return col
 
 
-
-def PRINT_RUN(text: str):
-    cols = getPreColors(text)
+def PRINT_RUN(text: str, theme_id: int = 0):
+    cols = _getPreColors(theme_id)
     col = [ansiHex(cols[0]), ansiHex(cols[1]), ansiHex(cols[2])]
     b = col[1] + '┃' + ansi('reset') # █ ┃ │ ║ 
     sl1 = col[1] + ('╱'*4) + ansi('reset')
@@ -318,76 +357,6 @@ def PRINT_RUN(text: str):
 
 
 
-def PR_FINAL_GEN_COMPANION():
-    # bd = ansiHex('2ec825') + '┃' + ansi('reset')
-    # lh = ansiHex('39fa2e') + '╱'*(TERM_WIDTH()-2) + ansi('reset')
-    # ld = ansiHex('23961c') + '╱'*(TERM_WIDTH()-2) + ansi('reset')
-    # print(ansiHex('39fa2e') + "\n\n" + bd + lh + bd + "\n" + bd + ld + bd + ansi('reset'))
-    bd = ansiHex('29abcc') + '┃' + ansi('reset')
-    lh = ansiHex('33d6ff') + '╱'*(TERM_WIDTH()-2) + ansi('reset')
-    ld = ansiHex('1f8199') + '╱'*(TERM_WIDTH()-2) + ansi('reset')
-    print(ansiHex('33d6ff') + "\n\n" + bd + lh + bd + "\n" + bd + ld + bd + ansi('reset'))
-    # print(ansiHex('16c60c') + ansi('bold') + f"\n ★ ★ ★   G E N   C O M P L E T E   ★ ★ ★" + ansi('reset'))
-    # DUMP_LOGS()
-
-def PR_INIT_GEN_COMPANION():
-    bd = ansiHex('dac82c') + '┃' + ansi('reset') # │ ║ █ ╱
-    lh = ansiHex('FFE710') + '╱'*(TERM_WIDTH()-2) + ansi('reset')
-    ld = ansiHex('C9A101') + '╱'*(TERM_WIDTH()-2) + ansi('reset')
-    print(ansiHex('FFE710') + "\n\n" + bd + lh + bd + "\n" + bd + ld + bd)
-    s2 = ' ' * int(max(0, TERM_WIDTH()-108) * 0.5)
-    s = ' ' * int(max(0, TERM_WIDTH()-80) * 0.5)
-    L2 = ansiHex('faf5b4')
-    L1 = ansiHex('faf16e')
-    M0 = ansiHex('d6cb2b')
-    D1 = ansiHex('8f871d')
-    D2 = ansiHex('47440e')
-    # PR_LN(ansi('Y') + ('╱'*256) + ansi('reset'), pre=False, suf=True)
-    # PR_LN(ansi('Y') + ('╱'*256) + ansi('reset'), pre=False, suf=True)
-    # SET_PRE(True)
-    print('\033[93m')
-    print(f"{s+L2} ▄▄▄▄  ▄▄▄▄▄ ▄▄  ▄▄     ▄▄▄▄  ▄▄▄▄  ▄▄   ▄▄ ▄▄▄▄▄   ▄▄▄▄  ▄▄  ▄▄ ▄▄  ▄▄▄▄  ▄▄  ▄▄ ")
-    print(f"{s+L1}██     ██    ██▄ ██    ██    ██  ██ ██▄ ▄██ ██  ██ ██  ██ ██▄ ██ ██ ██  ██ ██▄ ██ ")
-    print(f"{s+M0}██ ███ ████  ██████ ██ ██    ██  ██ ███████ ██▄▄█▀ ██▄▄██ ██████ ██ ██  ██ ██████ ")
-    print(f"{s+D1}██  ██ ██    ██ ▀██    ██    ██  ██ ██ ▀ ██ ██     ██  ██ ██ ▀██ ██ ██  ██ ██ ▀██ ")
-    print(f"{s+D2} ▀▀▀▀  ▀▀▀▀▀ ▀▀  ▀▀     ▀▀▀▀  ▀▀▀▀  ▀▀   ▀▀ ▀▀     ▀▀  ▀▀ ▀▀  ▀▀ ▀▀  ▀▀▀▀  ▀▀  ▀▀ ")
-    
-    a = ansiHex('00cc88') + "▄▄" + M0
-    b = ansiHex('00cc88') + "▀▀" + L1
-    c = ansiHex('009e6a') + "▄▄▄" + L2
-    d = ansiHex('00cc88') + "███" + L2
-    print(f"{s2+D2}                                                   ▄▄▄▄▄▄                                                   ")
-    print(f"{s2+D1}▀█████████████▀████████▀████████▀████████▄    ▄▄████████████▄▄    ▄████████▀████████▀████████▀█████████████▀")
-    print(f"{s2+M0}  ▀█████████▄   ▄████▄   ▄████▄   ▄███████   ██████████████████   ███████▄   ▄████▄   ▄████▄   ▄█████████▀  ")
-    print(f"{s2+M0}    ▀████████▄█▄██████▄█▄██████▄█▄█████████  ███████▀{a}▀███████  █████████▄█▄██████▄█▄██████▄█▄████████▀    ")
-    print(f"{s2+L1}                                            ▄███████▄{b}▄███████▄                                            ")
-    print(f"{s2+L2}       ▀█████████████████████████████████▀  ██▀{c} ██████ {c}▀██  ▀██████████████████████████████████▀      ")
-    print(f"{s2+L2}         ▀█████████████████████████████▀  ▄███ {d} ██████ {d} ███▄  ▀██████████████████████████████▀        ")
-    print(f"{s2+L1}                                          ▀████▄▄▄████████▄▄▄████▀                                          ")
-    print(f"{s2+M0}                    ▀███████████████████▄   ▀███████▀  ▀███████▀   ▄███████████████████▀                    ")
-    print(f"{s2+M0}                      ▀███████████████████▄      ███▄██▄███      ▄███████████████████▀                      ")
-    print(f"{s2+D1}                                                 ▀████████▀                                                 ")
-    print(f"{s2+D2}                                                    ▀▀▀▀                                                    ")
-
-#     print("""\033[93m\n
-# {s} ▄▄▄▄  ▄▄▄▄▄ ▄▄  ▄▄     ▄▄▄▄  ▄▄▄▄  ▄▄   ▄▄ ▄▄▄▄▄   ▄▄▄▄  ▄▄  ▄▄ ▄▄  ▄▄▄▄  ▄▄  ▄▄ 
-# {s}██     ██    ██▄ ██    ██    ██  ██ ██▄ ▄██ ██  ██ ██  ██ ██▄ ██ ██ ██  ██ ██▄ ██ 
-# {s}██ ███ ████  ██████ ██ ██    ██  ██ ███████ ██▄▄█▀ ██▄▄██ ██████ ██ ██  ██ ██████ 
-# {s}██  ██ ██    ██ ▀██    ██    ██  ██ ██ ▀ ██ ██     ██  ██ ██ ▀██ ██ ██  ██ ██ ▀██ 
-# {s} ▀▀▀▀  ▀▀▀▀▀ ▀▀  ▀▀     ▀▀▀▀  ▀▀▀▀  ▀▀   ▀▀ ▀▀     ▀▀  ▀▀ ▀▀  ▀▀ ▀▀  ▀▀▀▀  ▀▀  ▀▀ 
-# \033[0m""")
-    
-#     print("""\033[93m\n
-                  
-                  
-# ▄▀▀▀  █▀▀▀ █▄ █   ▄▀▀▀
-# █  ▀█ █▀▀  █ ▀█ ▀ █     
-#  ▀▀▀  ▀▀▀▀ ▀  ▀    ▀▀▀ 
-# \033[0m""")
-
-
-
-
 
 def ERS(text: str): return STY(text,'#fffdfc', 'bold')+ansiHex('ffddcc')
 def ERR(text: str):
@@ -399,3 +368,41 @@ def ERR(text: str):
     print(f"\n{i}{o}{l}{ansi('reset')}")
     print(ansiHex('ff5555'))
     return (f"\n{i}{o}{l}{ansi('reset')}\n")
+
+
+
+
+
+
+
+"""
+  ✖  ✔  ⚠︎  ✦  𝒊  ☢  🛈  ★  ✎ 🗐 ☑ ➤ 🕊 ▶
+  「  」  ⌞  ⌝
+  ⚠️  ✔️  ☑️  ❌  ♻️
+  🕛🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚
+  ◝◟◞◜◝◟  ◡ ○  ◴◷◶◵ ◐◓◑◒ ◴◷◶◵  ○ ◡  ◞◜◝◟◞◜  ◠ ○  ◶◴◵◷ ◑◒◐◓ ◶◴◵◷  ○ ◠ 
+  
+
+▏                      ▕    24
+
+▏__0.5 /__0.5KB▕
+
+
+▏              ▕
+
+▏99.9% ████████▕    16
+
+▏ ᴩʀᴏᴄ ᴄᴏᴍᴩʟᴇᴛᴇ ▕    16
+◢ ◣ ◤ ◥
+◐◑◒◓◕◴ ◵ ◶ ◷ ◧ ◩ ◳ ◲	◱	◰ 
+█
+▉
+▊
+▋
+▌
+▍
+▎
+▏
+
+
+"""

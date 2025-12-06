@@ -13,6 +13,4 @@ from core.az_reports import (
     PRINT_EXITLOGS, INIT_REPORTS
 )
 
-from .utils.util import *
-from .utils.util_json import *
 from .utils.util_print import *
