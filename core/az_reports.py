@@ -1,7 +1,7 @@
 import re, subprocess, atexit
 from datetime import datetime
 from typing import Optional
-from az_terminal import PR_BR, PR_LN, STY, TERM_WIDTH, ansi, ansiHex, strip_ansi, termTAG
+from core.az_terminal import PR_BR, PR_LN, STY, TERM_WIDTH, ansi, ansiHex, strip_ansi, termTAG
 
 TIMEISO_START: dict = { "time": datetime.now().isoformat() }
 TIMEISO_FINAL: dict = { "time": datetime.now().isoformat() }
