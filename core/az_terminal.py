@@ -379,19 +379,19 @@ class ConsoleLineState:
                    pre: Optional[Union[int, bool, str]] = None,
                    suf: Optional[Union[int, bool, str]] = None,
                    useTermWidth: Optional[bool] = None):
-        if mid is not None and isinstance(mid, int): self.w_line = int(mid)
-        if mid is not None and isinstance(mid, str): self.out_mid(str(mid), True)
+        if pre is not None and isinstance(pre, bool): self.w_pre = int(TERM_WIDTH_FULL() * _W_PRE_MULT) if pre else 0
         if mid is not None and isinstance(mid, bool) and not mid: self.out_mid("")
+        if suf is not None and isinstance(suf, bool): self.w_suf = int(_W_SUF) if pre else 0
 
         if pre is not None and isinstance(pre, int): self.w_pre = int(pre)
-        if pre is not None and isinstance(pre, str): self.out_pre(str(pre), True)
-        if pre is not None and isinstance(pre, bool): self.w_pre = int(TERM_WIDTH_FULL() * _W_PRE_MULT) if pre else 0
-
+        if mid is not None and isinstance(mid, int): self.w_line = int(mid)
         if suf is not None and isinstance(suf, int): self.w_suf = int(suf)
+
+        if mid is not None and isinstance(mid, str): self.out_mid(str(mid), True)
+        if pre is not None and isinstance(pre, str): self.out_pre(str(pre), True)
         if suf is not None and isinstance(suf, str): self.out_suf(str(suf), True)
-        if suf is not None and isinstance(suf, bool): self.w_suf = int(_W_SUF) if pre else 0
+
         if useTermWidth is not None: self.use_term_width = bool(useTermWidth)
-        
         if self._active: self.render_all() # If active, re-render with new widths
         # time.sleep(0.5)
 
