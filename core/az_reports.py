@@ -1,5 +1,7 @@
+import os
 import re, subprocess, atexit
 from datetime import datetime
+import traceback
 from typing import Optional
 from core.az_terminal import PR_BR, PR_LN, STY, TERM_WIDTH, ansi, ansiHex, strip_ansi, termTAG
 
@@ -10,12 +12,10 @@ def set_TIMEISO_START(): TIMEISO_START['time'] = datetime.now().isoformat()
 def set_TIMEISO_FINAL(): TIMEISO_FINAL['time'] = datetime.now().isoformat()
 
 
-# { "group": group, "link": link, "mid": mid, "pre": pre }
 EXITLOGS_INFO: list[dict] = []
 EXITLOGS_WARN: list[dict] = []
 EXITLOGS_FAIL: list[dict] = []
 EXITLOGS_ERROR: list[dict] = []
-EXITLOGS_FATAL: list[dict] = []
 
 
 
@@ -25,18 +25,20 @@ def push_EXITLOGS_INFO(entry: dict): EXITLOGS_INFO.append(entry)
 def push_EXITLOGS_WARN(entry: dict): EXITLOGS_WARN.append(entry)
 def push_EXITLOGS_FAIL(entry: dict): EXITLOGS_FAIL.append(entry)
 def push_EXITLOGS_ERROR(entry: dict): EXITLOGS_ERROR.append(entry)
-def push_EXITLOGS_FATAL(entry: dict): EXITLOGS_FATAL.append(entry)
 
 def _ERS(text: str): return STY(text,'#fffdfc', 'bold')+ansiHex('ffddcc')
 
-def _ERR(text: str):
-    i = f"\n{ansiHex('aa0000') + ('▀'*TERM_WIDTH()) + ansi('reset')}" # ff6655
-    l = f"\n{ansiHex('aa0000') + ('━'*TERM_WIDTH()) + ansi('reset')}" # ff6655
-    o = f"\n{ansiHex('ff0000')} ✖  {ansi('reset')+ansiHex('ffddcc')}{text}"
-    print("\n")
-    print(f"\n{i}{o}{l}{ansi('reset')}")
-    print(ansiHex('ff5555'))
-    return (f"\n{i}{o}{l}{ansi('reset')}\n")
+def _ERR_I():
+    i = f"{ansiHex('aa0000') + ('▀'*(TERM_WIDTH()-4)) + ansi('reset')}" # ff6655
+    return (f"{i}{ansi('reset')}")
+
+def _ERR_L(text: str):
+    l = f"{ansiHex('ff0000')} ✖  {ansi('reset')+ansiHex('ffddcc')}{text}"
+    return (f"{l}{ansi('reset')}")
+
+def _ERR_O():
+    o = f"{ansiHex('aa0000') + ('━'*(TERM_WIDTH()-4)) + ansi('reset')}" # ff6655
+    return (f"{o}{ansi('reset')}")
 
 def _extract_script_error_type(stderr: str) -> str:
     if not stderr: return "UnknownError"
@@ -45,6 +47,7 @@ def _extract_script_error_type(stderr: str) -> str:
     match = re.search(r"(\w+Error|Exception|Warning)", stderr) # fallback: scan entire stderr
     return match.group(1) if match else "UnknownError"
 
+
 def _clean_trace_lines(trace: str) -> list[str]:
     splitlines = trace.splitlines()
     lines = splitlines[1:]
@@ -52,24 +55,41 @@ def _clean_trace_lines(trace: str) -> list[str]:
     final = []
     for i, line in enumerate(lines):
         if "File " in line and " line " in line:
-            new = re.sub(r'^.*?Python[\\/]', '', line)  # Remove full system path up to gen_companion/
-            new = re.sub(r'^.*?gen_companion[\\/]', '', line)  # supports / or \ paths
-            new = new.replace("\\", "/")  # Replace backslashes with forward
-            new = ansi('W', 'bold') + "    " + new.replace('", line', ansi('reset')+f", {ansi('R')}line" + ansi('RH'))
+            new = _clean_link(line)
+            new = new.replace('", line', ansi('reset') + ansi('K') + f", {ansiHex('#55bbdd')}line") 
+            new = ansiHex('#aaccff') + ansi('bold') + "    " + new + ansiHex('#77ddff')
+
+            new = new.replace('File "', ansi('reset'))
             new = new.replace(', in <module>', '') + ansi('reset')
+            new = new.replace(', in', ansi('reset')+f"{ansi('R')}  :: " + ansiHex('#ff8866')) + ansi('reset')
+            if '<' not in new and '>' not in new: cleaned.append('')
             cleaned.append(new)
+            # if '<' not in new and '>' not in new: cleaned.append('\n' + new)
+
         elif '~' in line and '^' in line: # 〰 〜 ～ ┈ ═ ﹉ ﹋ ﹌ ﹊
-            new = line.replace("~", f"{ansi('Y')}─")
-            new = new.replace("^", f"{ansi('YH', 'bold')}═")
+            new = line.replace("~", f"{ansiHex('#886622')}─")
+            new = new.replace("^", f"{ansiHex('#eecc22') + ansi('bold')}━")
             cleaned.append(ansi('reset') + f"{new}" + ansi('reset'))
         elif i == len(lines)-1: 
             key, sep, value = line.partition(': ')
             if sep: new = f"{key}: {_ERS(value)}"
             else: new = f"{_ERS(line)}"
-            final = [ansi('reset') + _ERR(new) + ansi('reset')]
-        else: cleaned.append(ansi('MH') + f"{line}" + ansi('reset'))
+            # final.append(ansi('reset') + _ERR_I() + ansi('reset'))
+            final.append(ansi('reset') + _ERR_L(new) + ansi('reset'))
+        else: cleaned.append(ansiHex('#ffaadd') + ansiHex('ffddcc') + f"{line}" + ansi('reset'))
     final.extend(cleaned)
+    # final.append(_ERR_O())
     return final
+
+
+
+def _clean_link(line: str):
+    # project_name = os.path.basename(os.path.dirname(__file__))
+    project_name = os.path.basename(os.getcwd())
+    new = re.sub(rf'^.*?Python[\\/]', '', str(line))                # Remove up through "Python/"
+    new = re.sub(rf'^.*?{re.escape(project_name)}[\\/]', '', new)   # Remove up through the project folder dynamically
+    new = new.replace("\\", "/")
+    return new
 
 
 
@@ -115,21 +135,10 @@ def _print_EXITLOGS_ERROR():
     if not EXITLOGS_ERROR: return
     _init("ERROR REPORT", _c_e)
     for i, pkg in enumerate(EXITLOGS_ERROR, start=1):
-        if "stderr" in pkg and pkg["stderr"]:
-            sterr_lines = _clean_trace_lines(pkg["stderr"])
-            print(ansi('R') + "   ✖"+f"\n    ".join(sterr_lines))
+        if "trace" in pkg and pkg["trace"]:  # full traceback for module error
+            trace_lines = _clean_trace_lines(pkg["trace"].rstrip())
+            print(f"{_ln}" + f"\n{_ln}".join(trace_lines))
         if i < len(EXITLOGS_ERROR)-1: _br(_c_e)
-    _cap()
-
-def _print_EXITLOGS_FATAL():
-    if not EXITLOGS_FATAL: return
-    _init("FATAL REPORT", _c_e)
-    # print(_ln+"\n"+_ln + STY(_pre_ln+"━━  FATAL REPORTS  ━━━━━━━━" + _bld_ln, _c_e[0], 'bold', 'italic')+"\n"+_ln)
-    for i, pkg in enumerate(EXITLOGS_FATAL, start=1):
-        if "stderr" in pkg and pkg["stderr"]:
-            sterr_lines = _clean_trace_lines(pkg["stderr"])
-            print(ansi('R') + "   ✷"+f"\n    ".join(sterr_lines))
-        if i < len(EXITLOGS_FATAL)-1: _br(_c_e)
     _cap()
 
 def getCurrentDurationStr():
@@ -154,7 +163,6 @@ def PRINT_DURATION_REPORT():
     # if len(EXITLOGS_WARN): print(f"EXITLOGS_WARN: {len(EXITLOGS_WARN)}")
     # if len(EXITLOGS_FAIL): print(f"EXITLOGS_FAIL: {len(EXITLOGS_FAIL)}")
     # if len(EXITLOGS_ERROR): print(f"EXITLOGS_ERROR: {len(EXITLOGS_ERROR)}")
-    # if len(EXITLOGS_FATAL): print(f"EXITLOGS_FATAL: {len(EXITLOGS_FATAL)}")
 
 
 def PR_NOTE(mid: str, defTo = None, *, pre: Optional[str] = None):
@@ -183,29 +191,17 @@ def PR_FAIL(mid: str, defTo = None, *, pre: str = "FAIL", group: str = "", link:
     return defTo
 
 
-def PR_ERROR(mid: str, e: Exception, defTo = None, *, pre: str = "ERROR", group: str = "", link: str = ""):
-    mid = termTAG("✖", "ERROR", mid, '#cd3131', '#ff7777')
-    stderr = e.stderr or "" if isinstance(e, subprocess.CalledProcessError) else ""
+def PR_ERROR(mid: str, e: Exception, defTo = None, *, pre: str = "ERROR", group: str = "", link: str = "", ic: str = "✖"):
+    if isinstance(e, subprocess.CalledProcessError): # Subprocess errors include pipe output
+        trace = e.stderr.decode() if isinstance(e.stderr, bytes) else (e.stderr or "")
+    else: trace = ''.join(traceback.format_exception(type(e), e, e.__traceback__)) # Python exception traceback
     push_EXITLOGS_ERROR({
         "group": group, "link": link, "mid": mid, "pre": pre,
-        "message": str(e), "trace": stderr, "traceback": e.stderr,
+        "trace": trace, "internal_type": _extract_script_error_type(trace),
     })
-    PR_LN(mid, pre=pre)
-    return defTo
-
-
-def PR_FATAL(script: str, e: Exception):
-    link = script
-    stderr = e.stderr or "" if isinstance(e, subprocess.CalledProcessError) else ""
-    push_EXITLOGS_FATAL({
-        "group": "",
-        "link": link,
-        "message": str(e),
-        "stderr": stderr,
-        "traceback": e.stderr,
-    })
-    PR_BR(STY(f"{str(link)}", 'italic', 'R'), pre=STY(f"  ✖  ERROR  ", 'BG_R', 'bold'))
-    if e != None: print(STY(str(e), 'RH'))
+    PR_BR(STY(f"{_clean_link(link)}", 'italic', 'RH'), pre=STY(f"  {ic}  ERROR  ", 'BG_R', 'bold'))
+    trace_lines = _clean_trace_lines(trace.rstrip())
+    print(f"\n".join(trace_lines))
 
 
 
@@ -224,13 +220,12 @@ def PRINT_EXITLOGS():
     strStart = strStart + "─" * max(termw - len(strStart), 0)
     strFinal = strFinal + "─" * max(termw - len(strFinal), 0)
 
-    can_sum = len(EXITLOGS_INFO) + len(EXITLOGS_WARN) + len(EXITLOGS_FAIL) + len(EXITLOGS_ERROR) + len(EXITLOGS_FATAL) > 0
+    can_sum = len(EXITLOGS_INFO) + len(EXITLOGS_WARN) + len(EXITLOGS_FAIL) + len(EXITLOGS_ERROR) > 0
     if can_sum: print("\n\n" + _ln_pre + f"┌" + strStart + ansi('reset'))
     if len(EXITLOGS_INFO): _print_EXITLOGS_INFO()
     if len(EXITLOGS_WARN): _print_EXITLOGS_WARN()
     if len(EXITLOGS_FAIL): _print_EXITLOGS_FAIL()
     if len(EXITLOGS_ERROR): _print_EXITLOGS_ERROR()
-    if len(EXITLOGS_FATAL): _print_EXITLOGS_FATAL()
 
     print(_ln_pre + f"{'└' if can_sum else '\n'}" + strFinal + ansi('reset') + "\n\n\n")
 

@@ -471,6 +471,7 @@ def PR(mid: Optional[Union[str, bool]] = None, *, pre: Optional[Union[str, bool]
        loud: bool = True, ln: bool = False, nl: bool = False, br: bool = False):
     if loud: 
         _PR().set_line(pre=pre, mid=mid, suf=suf)
+        _PR().set_line(pre=pre, mid=mid, suf=suf)
         if nl or br: PR_NEXT()
         if isinstance(pre, str): SET_PR(pre=True)
         if ln or br: PR_NEXT()
